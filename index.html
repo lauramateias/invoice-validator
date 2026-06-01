@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Invoice Validator</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:         #f5f3ee;
+  --surface:    #ffffff;
+  --surface2:   #f0ede6;
+  --border:     #e2ddd4;
+  --text:       #1a1814;
+  --muted:      #8a8478;
+  --pass:       #1a7a4a;
+  --pass-bg:    #e8f5ee;
+  --pass-border:#a8d9bc;
+  --fail:       #c0392b;
+  --fail-bg:    #fdf0ee;
+  --fail-border:#e8b4ae;
+  --accent:     #2c2c2c;
+  --warn:       #b8760a;
+  --warn-bg:    #fef8ec;
+  --ink:        #1a1814;
+  --mono:       'JetBrains Mono', monospace;
+  --display:    'Syne', sans-serif;
+}
+
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--display); }
+
+/* ── LOADING ── */
+#loading {
+  position: fixed; inset: 0; background: var(--bg);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 24px; z-index: 1000;
+}
+.loading-mark {
+  width: 56px; height: 56px; border: 2px solid var(--border);
+  border-top-color: var(--ink); border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text { font-family: var(--mono); font-size: 11px; color: var(--muted); letter-spacing: 0.12em; text-transform: uppercase; }
+
+/* ── ERROR STATE ── */
+#error-state {
+  display: none; position: fixed; inset: 0; background: var(--bg);
+  flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+}
+.error-code { font-family: var(--mono); font-size: 72px; font-weight: 300; color: var(--border); line-height: 1; }
+.error-msg  { font-size: 14px; color: var(--muted); font-family: var(--mono); }
+
+/* ── APP ── */
+#app { display: none; flex-direction: column; height: 100vh; }
+
+/* ── HEADER ── */
+header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 32px; height: 56px;
+  background: var(--ink); color: #f5f3ee;
+  flex-shrink: 0;
+}
+.logo {
+  font-family: var(--display); font-size: 13px; font-weight: 700;
+  letter-spacing: 0.18em; text-transform: uppercase; color: #f5f3ee;
+  display: flex; align-items: center; gap: 12px;
+}
+.logo-rule { width: 24px; height: 1px; background: #666; }
+
+.verdict {
+  display: flex; align-items: center; gap: 10px;
+  font-family: var(--mono); font-size: 11px; font-weight: 500;
+  letter-spacing: 0.1em; text-transform: uppercase;
+}
+.verdict-pill {
+  padding: 5px 14px; border-radius: 2px; font-weight: 600; font-size: 11px;
+  letter-spacing: 0.12em;
+}
+.verdict-pill.pass { background: var(--pass); color: #fff; }
+.verdict-pill.fail { background: var(--fail); color: #fff; }
+.verdict-label { color: #888; font-size: 10px; }
+
+/* ── BODY LAYOUT ── */
+.body-layout {
+  display: grid; grid-template-columns: 1fr 400px;
+  flex: 1; overflow: hidden;
+}
+
+/* ── PDF PANEL ── */
+.pdf-panel {
+  display: flex; flex-direction: column;
+  border-right: 1px solid var(--border);
+  background: var(--surface2); overflow: hidden;
+}
+.pdf-toolbar {
+  padding: 10px 20px; background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  flex-shrink: 0;
+}
+.pdf-label {
+  font-family: var(--mono); font-size: 10px; text-transform: uppercase;
+  letter-spacing: 0.14em; color: var(--muted);
+}
+.pdf-name {
+  font-family: var(--mono); font-size: 11px; color: var(--ink);
+  background: var(--surface2); padding: 4px 10px; border-radius: 2px;
+  border: 1px solid var(--border);
+}
+iframe {
+  flex: 1; width: 100%; border: none; display: block;
+}
+.no-pdf {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 12px; color: var(--muted);
+}
+.no-pdf-icon { font-size: 40px; opacity: 0.3; }
+.no-pdf-text { font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; }
+
+/* ── VALIDATION PANEL ── */
+.val-panel {
+  display: flex; flex-direction: column;
+  background: var(--surface); overflow: hidden;
+}
+
+/* ── STATS ROW ── */
+.stats-row {
+  display: grid; grid-template-columns: 1fr 1fr 1fr;
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.stat-cell {
+  padding: 16px 20px; border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 4px;
+}
+.stat-cell:last-child { border-right: none; }
+.stat-num {
+  font-family: var(--display); font-size: 28px; font-weight: 700; line-height: 1;
+}
+.stat-num.pass { color: var(--pass); }
+.stat-num.fail { color: var(--fail); }
+.stat-num.total { color: var(--ink); }
+.stat-lbl {
+  font-family: var(--mono); font-size: 9px; text-transform: uppercase;
+  letter-spacing: 0.14em; color: var(--muted);
+}
+
+/* ── SCROLL AREA ── */
+.val-scroll {
+  flex: 1; overflow-y: auto; padding: 0;
+}
+.val-scroll::-webkit-scrollbar { width: 3px; }
+.val-scroll::-webkit-scrollbar-thumb { background: var(--border); }
+
+/* ── CHECK ROW ── */
+.check-row {
+  border-bottom: 1px solid var(--border);
+  animation: slideIn 0.25s ease both;
+}
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.check-summary {
+  display: flex; align-items: center; gap: 0;
+  cursor: pointer; user-select: none;
+  transition: background 0.15s;
+}
+.check-summary:hover { background: var(--surface2); }
+
+.check-index {
+  width: 44px; flex-shrink: 0; padding: 14px 0;
+  text-align: center;
+  font-family: var(--mono); font-size: 10px; color: var(--muted);
+  border-right: 1px solid var(--border);
+}
+
+.check-status-bar {
+  width: 3px; flex-shrink: 0; align-self: stretch;
+}
+.check-status-bar.pass { background: var(--pass); }
+.check-status-bar.fail { background: var(--fail); }
+
+.check-info { flex: 1; padding: 12px 14px; min-width: 0; }
+.check-name-row { display: flex; align-items: center; gap: 8px; }
+.check-title {
+  font-size: 13px; font-weight: 600; color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.status-tag {
+  font-family: var(--mono); font-size: 9px; font-weight: 600;
+  letter-spacing: 0.1em; padding: 2px 7px; border-radius: 2px; flex-shrink: 0;
+}
+.status-tag.pass { background: var(--pass-bg); color: var(--pass); border: 1px solid var(--pass-border); }
+.status-tag.fail { background: var(--fail-bg); color: var(--fail); border: 1px solid var(--fail-border); }
+
+.check-preview {
+  font-family: var(--mono); font-size: 10px; color: var(--muted);
+  margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.check-chevron {
+  padding: 0 14px; color: var(--muted); font-size: 10px;
+  transition: transform 0.2s; flex-shrink: 0;
+}
+.check-row.open .check-chevron { transform: rotate(90deg); }
+
+/* ── CHECK DETAIL ── */
+.check-detail {
+  display: none; padding: 12px 14px 14px 61px;
+  border-top: 1px solid var(--border);
+  background: var(--surface2);
+  flex-direction: column; gap: 8px;
+}
+.check-row.open .check-detail { display: flex; }
+
+.fail-banner {
+  padding: 8px 12px; background: var(--fail-bg);
+  border: 1px solid var(--fail-border); border-radius: 2px;
+  font-family: var(--mono); font-size: 11px; color: var(--fail);
+  line-height: 1.5;
+}
+
+.field-table { display: flex; flex-direction: column; gap: 1px; }
+.field-entry {
+  display: flex; align-items: baseline;
+  gap: 8px; padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.field-entry:last-child { border-bottom: none; }
+.f-label {
+  font-family: var(--mono); font-size: 10px; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  min-width: 110px; flex-shrink: 0;
+}
+.f-value {
+  font-family: var(--mono); font-size: 11px; color: var(--ink);
+  flex: 1; word-break: break-all;
+}
+.f-conf {
+  font-family: var(--mono); font-size: 10px; font-weight: 500;
+  padding: 2px 7px; border-radius: 100px; flex-shrink: 0;
+}
+.f-conf.high { background: var(--pass-bg);  color: var(--pass); border: 1px solid var(--pass-border); }
+.f-conf.med  { background: var(--warn-bg);  color: var(--warn); border: 1px solid #f0d080; }
+.f-conf.low  { background: var(--fail-bg);  color: var(--fail); border: 1px solid var(--fail-border); }
+
+/* ── CONFIDENCE SECTION ── */
+.conf-section {
+  border-top: 2px solid var(--border); padding: 20px;
+  background: var(--surface);
+}
+.conf-heading {
+  font-family: var(--mono); font-size: 10px; text-transform: uppercase;
+  letter-spacing: 0.14em; color: var(--muted); margin-bottom: 14px;
+}
+.conf-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.conf-row:last-child { margin-bottom: 0; }
+.conf-lbl {
+  font-family: var(--mono); font-size: 10px; color: var(--muted);
+  width: 148px; flex-shrink: 0; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.conf-track {
+  flex: 1; height: 3px; background: var(--border); border-radius: 1px; overflow: hidden;
+}
+.conf-fill { height: 100%; border-radius: 1px; transition: width 1s cubic-bezier(0.16,1,0.3,1); }
+.conf-pct {
+  font-family: var(--mono); font-size: 10px; font-weight: 500;
+  width: 34px; text-align: right; flex-shrink: 0;
+}
+
+/* ── FOOTER ── */
+.val-footer {
+  border-top: 1px solid var(--border); padding: 12px 20px;
+  flex-shrink: 0; background: var(--surface);
+  font-family: var(--mono); font-size: 11px;
+}
+.footer-pass { color: var(--pass); display: flex; align-items: center; gap: 8px; }
+.footer-fail-title { color: var(--fail); font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px; }
+.footer-fail-item {
+  color: var(--muted); font-size: 10px; padding: 2px 0 2px 12px;
+  position: relative;
+}
+.footer-fail-item::before { content: '↳'; position: absolute; left: 0; color: var(--fail); }
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <div class="loading-mark"></div>
+  <div class="loading-text">Reading validation data…</div>
+</div>
+
+<div id="error-state">
+  <div class="error-code">404</div>
+  <div class="error-msg">No validation data found in URL.</div>
+  <div class="error-msg" style="margin-top:8px;color:#bbb;">Submit an invoice from n8n first.</div>
+</div>
+
+<div id="app">
+  <header>
+    <div class="logo">
+      <span>Invoice Validator</span>
+      <div class="logo-rule"></div>
+      <span id="doc-name" style="font-weight:400;opacity:0.5;font-size:11px;"></span>
+    </div>
+    <div class="verdict">
+      <span class="verdict-label">Result</span>
+      <span class="verdict-pill" id="verdict-pill">—</span>
+    </div>
+  </header>
+
+  <div class="body-layout">
+
+    <!-- PDF -->
+    <div class="pdf-panel">
+      <div class="pdf-toolbar">
+        <span class="pdf-label">Source Document</span>
+        <span class="pdf-name" id="pdf-name">—</span>
+      </div>
+      <div id="pdf-area" style="flex:1;display:flex;flex-direction:column;overflow:hidden;">
+        <div class="no-pdf">
+          <div class="no-pdf-icon">⬡</div>
+          <div class="no-pdf-text">No PDF embedded</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Validation -->
+    <div class="val-panel">
+
+      <div class="stats-row">
+        <div class="stat-cell">
+          <span class="stat-num pass" id="s-pass">—</span>
+          <span class="stat-lbl">Passed</span>
+        </div>
+        <div class="stat-cell">
+          <span class="stat-num fail" id="s-fail">—</span>
+          <span class="stat-lbl">Failed</span>
+        </div>
+        <div class="stat-cell">
+          <span class="stat-num total">10</span>
+          <span class="stat-lbl">Total</span>
+        </div>
+      </div>
+
+      <div class="val-scroll" id="checks-list"></div>
+
+      <div id="val-footer" class="val-footer"></div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+const CHECK_NAMES = {
+  "1_invoice_number":   "Invoice Number",
+  "2_invoice_date":     "Invoice Date",
+  "3_vendor_details":   "Vendor Details",
+  "4_currency":         "Currency",
+  "5_line_items":       "Line Items Present",
+  "6_line_items_total": "Line Items Sum vs Subtotal",
+  "7_due_date":         "Due Date vs Payment Terms",
+  "8_purchase_order":   "Purchase Order Referenced",
+  "9_vat_amount":       "VAT Amount vs Tax %",
+  "10_iban":            "IBAN & Account Number",
+};
+
+function confClass(s) {
+  if (!s || s === "N/A") return "low";
+  const n = parseInt(s);
+  return n >= 85 ? "high" : n >= 60 ? "med" : "low";
+}
+
+function confColor(pct) {
+  return pct >= 85 ? "#1a7a4a" : pct >= 60 ? "#b8760a" : "#c0392b";
+}
+
+function fRow(label, value, conf) {
+  const pill = conf
+    ? `<span class="f-conf ${confClass(conf)}">${conf}</span>`
+    : "";
+  return `<div class="field-entry">
+    <span class="f-label">${label}</span>
+    <span class="f-value">${value || "—"}</span>
+    ${pill}
+  </div>`;
+}
+
+function getPreview(key, check) {
+  const v = check.value;
+  if (!v) return "";
+  if (typeof v === "string") return v;
+  if (key === "3_vendor_details") return v.name?.value || "";
+  if (key === "6_line_items_total") return `Σ ${v.line_items_sum?.value} vs ${v.subtotal_on_invoice?.value}`;
+  if (key === "7_due_date") return `Net ${v.payment_terms_days?.value} → ${v.due_date_on_invoice?.value}`;
+  if (key === "9_vat_amount") return `${v.tax_percentage?.value} of ${v.subtotal?.value} = ${v.vat_amount_on_invoice?.value}`;
+  if (key === "10_iban") return v.iban?.value || "";
+  return "";
+}
+
+function getDetail(key, check) {
+  let html = "";
+  if (check.status === "FAIL" && check.reason) {
+    html += `<div class="fail-banner">⚠ ${check.reason}</div>`;
+  }
+  const v = check.value;
+  html += `<div class="field-table">`;
+  if (["1_invoice_number","4_currency","8_purchase_order"].includes(key)) {
+    html += fRow("Value", v, check.confidence);
+  } else if (key === "2_invoice_date") {
+    html += fRow("Date", v, check.confidence);
+  } else if (key === "3_vendor_details" && typeof v === "object") {
+    html += fRow("Name",    v.name?.value,    v.name?.confidence);
+    html += fRow("Address", v.address?.value, v.address?.confidence);
+    html += fRow("Tax ID",  v.tax_id?.value,  v.tax_id?.confidence);
+  } else if (key === "5_line_items") {
+    html += fRow("Count", v, check.confidence);
+  } else if (key === "6_line_items_total" && typeof v === "object") {
+    html += fRow("Line items sum",    v.line_items_sum?.value);
+    html += fRow("Subtotal on inv.", v.subtotal_on_invoice?.value, v.subtotal_on_invoice?.confidence);
+  } else if (key === "7_due_date" && typeof v === "object") {
+    html += fRow("Terms (days)",     v.payment_terms_days?.value,  v.payment_terms_days?.confidence);
+    html += fRow("Due date on inv.", v.due_date_on_invoice?.value, v.due_date_on_invoice?.confidence);
+  } else if (key === "9_vat_amount" && typeof v === "object") {
+    html += fRow("VAT amount",    v.vat_amount_on_invoice?.value, v.vat_amount_on_invoice?.confidence);
+    html += fRow("Tax %",         v.tax_percentage?.value,        v.tax_percentage?.confidence);
+    html += fRow("Subtotal base", v.subtotal?.value,               v.subtotal?.confidence);
+  } else if (key === "10_iban" && typeof v === "object") {
+    html += fRow("IBAN",           v.iban?.value,           v.iban?.confidence);
+    html += fRow("Account number", v.account_number?.value, v.account_number?.confidence);
+  }
+  html += `</div>`;
+  return html;
+}
+
+function render(payload) {
+  const { validation, pdfBase64, pdfMime, docName } = payload;
+  const { overall, checks, failed_checks, field_confidence } = validation;
+
+  // Header
+  document.getElementById("doc-name").textContent = docName || "invoice.pdf";
+  document.getElementById("pdf-name").textContent = docName || "invoice.pdf";
+  const pill = document.getElementById("verdict-pill");
+  pill.textContent = overall === "PASS" ? "PASS" : `${validation.failed_count} FAILED`;
+  pill.className = "verdict-pill " + (overall === "PASS" ? "pass" : "fail");
+
+  // Stats
+  const entries = Object.entries(checks);
+  const passN = entries.filter(([,v]) => v.status === "PASS").length;
+  const failN = entries.filter(([,v]) => v.status === "FAIL").length;
+  document.getElementById("s-pass").textContent = passN;
+  document.getElementById("s-fail").textContent = failN;
+
+  // PDF
+  const pdfArea = document.getElementById("pdf-area");
+  if (pdfBase64) {
+    pdfArea.innerHTML = `<iframe src="data:${pdfMime || "application/pdf"};base64,${pdfBase64}"></iframe>`;
+  }
+
+  // Checks
+  const list = document.getElementById("checks-list");
+  list.innerHTML = "";
+
+  entries.forEach(([key, check], i) => {
+    const isPass = check.status === "PASS";
+    const cls = isPass ? "pass" : "fail";
+    const name = CHECK_NAMES[key] || key;
+    const preview = getPreview(key, check);
+
+    const row = document.createElement("div");
+    row.className = "check-row";
+    row.style.animationDelay = `${i * 35}ms`;
+    row.innerHTML = `
+      <div class="check-summary" onclick="toggle(this)">
+        <div class="check-index">${String(i+1).padStart(2,"0")}</div>
+        <div class="check-status-bar ${cls}"></div>
+        <div class="check-info">
+          <div class="check-name-row">
+            <span class="check-title">${name}</span>
+            <span class="status-tag ${cls}">${isPass ? "PASS" : "FAIL"}</span>
+          </div>
+          ${preview ? `<div class="check-preview">${preview}</div>` : ""}
+        </div>
+        <div class="check-chevron">▶</div>
+      </div>
+      <div class="check-detail">${getDetail(key, check)}</div>
+    `;
+    list.appendChild(row);
+  });
+
+  // Confidence bars
+  if (field_confidence) {
+    const sec = document.createElement("div");
+    sec.className = "conf-section";
+    const bars = Object.entries(field_confidence)
+      .filter(([,v]) => v != null)
+      .map(([lbl, pct]) => `
+        <div class="conf-row">
+          <span class="conf-lbl">${lbl}</span>
+          <div class="conf-track">
+            <div class="conf-fill" style="width:${pct}%;background:${confColor(pct)}"></div>
+          </div>
+          <span class="conf-pct" style="color:${confColor(pct)}">${pct}%</span>
+        </div>`).join("");
+    sec.innerHTML = `<div class="conf-heading">Extraction Confidence</div>${bars}`;
+    list.appendChild(sec);
+  }
+
+  // Footer
+  const footer = document.getElementById("val-footer");
+  if (overall === "PASS") {
+    footer.innerHTML = `<div class="footer-pass">✓ All 10 validation checks passed</div>`;
+  } else if (failed_checks?.length) {
+    footer.innerHTML = `<div class="footer-fail-title">Failed checks</div>` +
+      failed_checks.map(f => `<div class="footer-fail-item">${f.replace(/^\S+:\s*/,"")}</div>`).join("");
+  }
+
+  // Show app
+  document.getElementById("loading").style.display = "none";
+  const app = document.getElementById("app");
+  app.style.display = "flex";
+}
+
+function toggle(el) {
+  el.closest(".check-row").classList.toggle("open");
+}
+
+// ── BOOT ─────────────────────────────────────────────────────
+window.addEventListener("load", () => {
+  try {
+    const hash = window.location.hash.slice(1);
+    if (!hash) throw new Error("No hash");
+    const payload = JSON.parse(decodeURIComponent(hash));
+    if (!payload.validation) throw new Error("Missing validation");
+    render(payload);
+  } catch (e) {
+    document.getElementById("loading").style.display = "none";
+    document.getElementById("error-state").style.display = "flex";
+  }
+});
+</script>
+</body>
+</html>
