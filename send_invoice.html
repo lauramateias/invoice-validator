@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Send Invoice</title>
+<style>
+  body { font-family: sans-serif; background: #f5f3ee; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+  .box { background: #fff; border: 1px solid #e2ddd4; border-radius: 12px; padding: 40px; display: flex; flex-direction: column; gap: 16px; width: 400px; box-shadow: 0 4px 24px rgba(0,0,0,0.06); }
+  h2 { font-size: 15px; color: #1a1814; margin: 0; letter-spacing: 0.05em; text-transform: uppercase; }
+  label { font-size: 11px; color: #8a8478; text-transform: uppercase; letter-spacing: 0.08em; display: block; margin-bottom: 6px; }
+  input[type="text"] { width: 100%; background: #f5f3ee; border: 1px solid #e2ddd4; border-radius: 6px; padding: 10px 12px; color: #1a1814; font-size: 13px; font-family: monospace; outline: none; }
+  input[type="text"]:focus { border-color: #1a1814; }
+  .file-area { border: 1px dashed #e2ddd4; border-radius: 6px; padding: 20px; text-align: center; cursor: pointer; transition: border-color 0.2s; }
+  .file-area:hover { border-color: #1a1814; }
+  .file-area input { display: none; }
+  .file-label { font-size: 12px; color: #8a8478; }
+  .file-chosen { font-size: 12px; color: #1a1814; font-family: monospace; margin-top: 4px; }
+  button { background: #1a1814; color: #f5f3ee; border: none; border-radius: 6px; padding: 13px; font-size: 13px; font-weight: 600; cursor: pointer; letter-spacing: 0.04em; transition: opacity 0.2s; }
+  button:hover { opacity: 0.85; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .status { font-size: 11px; color: #8a8478; font-family: monospace; text-align: center; min-height: 16px; }
+  .status.error { color: #c0392b; }
+  .status.ok { color: #1a7a4a; }
+  .divider { border: none; border-top: 1px solid #e2ddd4; }
+  .saved-url { font-size: 10px; color: #8a8478; font-family: monospace; cursor: pointer; text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="box">
+  <h2>Invoice Validator</h2>
+  <hr class="divider">
+  <div>
+    <label>n8n Webhook URL</label>
+    <input type="text" id="webhookUrl" placeholder="https://your-n8n.com/webhook/abc123" />
+    <div style="margin-top:6px;">
+      <span class="saved-url" onclick="saveUrl()">Save URL for next time</span>
+    </div>
+  </div>
+  <div>
+    <label>Invoice PDF</label>
+    <div class="file-area" onclick="document.getElementById('pdfFile').click()">
+      <input type="file" id="pdfFile" accept=".pdf" onchange="fileChosen(this)">
+      <div class="file-label">Click to select a PDF</div>
+      <div class="file-chosen" id="chosen-name"></div>
+    </div>
+  </div>
+  <button id="submitBtn" onclick="submit()">Validate Invoice →</button>
+  <div class="status" id="status"></div>
+</div>
+
+<script>
+  const saved = localStorage.getItem("n8n_webhook_url");
+  if (saved) document.getElementById("webhookUrl").value = saved;
+
+  function saveUrl() {
+    const url = document.getElementById("webhookUrl").value.trim();
+    if (url) { localStorage.setItem("n8n_webhook_url", url); setStatus("URL saved.", "ok"); }
+  }
+
+  function fileChosen(input) {
+    document.getElementById("chosen-name").textContent = input.files[0]?.name || "";
+  }
+
+  function setStatus(msg, cls) {
+    const el = document.getElementById("status");
+    el.textContent = msg;
+    el.className = "status " + (cls || "");
+  }
+
+  async function submit() {
+    const url  = document.getElementById("webhookUrl").value.trim();
+    const file = document.getElementById("pdfFile").files[0];
+    const btn  = document.getElementById("submitBtn");
+
+    if (!url)  return setStatus("Please enter your webhook URL.", "error");
+    if (!file) return setStatus("Please select a PDF file.", "error");
+
+    btn.disabled = true;
+    setStatus("Submitting invoice — this may take a few seconds…");
+
+    const formData = new FormData();
+    formData.append("data", file, file.name);
+
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        body: formData
+      });
+
+      if (!response.ok) {
+        throw new Error(`n8n returned HTTP ${response.status}`);
+      }
+
+      // n8n returns the GitHub Pages URL as plain text
+      const destination = (await response.text()).trim();
+
+      if (!destination || !destination.startsWith("http")) {
+        throw new Error("Unexpected response from n8n — got: " + destination.slice(0, 80));
+      }
+
+      setStatus("Opening validation report…", "ok");
+
+      // Navigate directly — hash is preserved this way
+      window.location.href = destination;
+
+    } catch (err) {
+      setStatus("Error: " + err.message, "error");
+      btn.disabled = false;
+    }
+  }
+</script>
+</body>
+</html>
