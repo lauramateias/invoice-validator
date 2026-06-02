@@ -179,7 +179,7 @@ async function submit() {
 
   btn.disabled = true;
   setProgress(20);
-  showStatus("Uploading invoice to n8n…", "info");
+  showStatus("Uploading invoice to n8n… this may take 10-20 seconds.", "info");
 
   const formData = new FormData();
   formData.append("data", selectedFile, selectedFile.name);
@@ -187,39 +187,39 @@ async function submit() {
   try {
     setProgress(40);
 
-    // Use no-cors to allow n8n to redirect freely
-    // We submit via a hidden form so the browser follows the redirect natively
-    // This guarantees the hash reaches GitHub Pages intact
-    submitViaForm(url, selectedFile);
+    const response = await fetch(url, {
+      method: "POST",
+      body: formData,
+      mode: "cors",
+    });
+
+    setProgress(70);
+
+    if (!response.ok) {
+      throw new Error(`n8n returned HTTP ${response.status}`);
+    }
+
+    const json = await response.json();
+    console.log("n8n response:", json);
+
+    const destination = json?.redirectUrl?.trim();
+
+    if (!destination) {
+      throw new Error("No redirectUrl in response. Check Node 6 output in n8n.");
+    }
+
+    setProgress(100);
+    showStatus("Success! Opening validation report…", "ok");
+
+    setTimeout(() => {
+      window.location.href = destination;
+    }, 800);
 
   } catch (err) {
     setProgress(null);
     showStatus("Error: " + err.message, "error");
     btn.disabled = false;
   }
-}
-
-function submitViaForm(url, file) {
-  showStatus("Submitting — do not close this tab…", "info");
-  setProgress(60);
-
-  const form = document.createElement("form");
-  form.method = "POST";
-  form.action = url;
-  form.enctype = "multipart/form-data";
-  form.style.display = "none";
-
-  const input = document.createElement("input");
-  input.type = "file";
-  input.name = "data";
-
-  const dt = new DataTransfer();
-  dt.items.add(file);
-  input.files = dt.files;
-
-  form.appendChild(input);
-  document.body.appendChild(form);
-  form.submit();
 }
 </script>
 </body>
