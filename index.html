@@ -440,7 +440,7 @@ function getDetail(key, check) {
 }
 
 function render(payload) {
-  const { validation, docName } = payload;
+  const { validation, pdfBase64, pdfMime, docName } = payload;
   const { overall, checks, failed_checks, field_confidence } = validation;
 
   // Header
@@ -460,12 +460,7 @@ function render(payload) {
   // PDF
   const pdfArea = document.getElementById("pdf-area");
   if (pdfBase64) {
-    pdfArea.innerHTML = `
-  <div class="no-pdf">
-    <div class="no-pdf-icon">📄</div>
-    <div class="no-pdf-text">PDF preview not available</div>
-  </div>`;
-  }
+    pdfArea.innerHTML = `<iframe src="data:${pdfMime || "application/pdf"};base64,${pdfBase64}"></iframe>`;
 
   // Checks
   const list = document.getElementById("checks-list");
