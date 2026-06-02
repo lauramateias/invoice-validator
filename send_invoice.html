@@ -187,47 +187,43 @@
     const formData = new FormData();
     formData.append("data", selectedFile, selectedFile.name);
 
-    try {
-      setProgress(40);
+try {
+  const response = await fetch(url, {
+    method: "POST",
+    body: formData,
+  });
 
-      const response = await fetch(url, {
-        method: "POST",
-        body: formData,
-      });
+  if (!response.ok) {
+    const errText = await response.text().catch(() => "");
+    throw new Error(`n8n returned HTTP ${response.status}${errText ? ": " + errText.slice(0,120) : ""}`);
+  }
 
-      setProgress(80);
+  const json = await response.json();
+  const destination = json.redirectUrl?.trim();
 
-      if (!response.ok) {
-        const errText = await response.text().catch(() => "");
-        throw new Error(`n8n returned HTTP ${response.status}${errText ? ": " + errText.slice(0,120) : ""}`);
-      }
+  if (!destination) {
+    throw new Error(
+      "n8n returned an empty response.\n\n" +
+      "Check that your Respond to Webhook node:\n" +
+      "• Has 'Respond With' set to JSON\n" +
+      "• Has Response Body set to {{ $json }} with the = toggle ON\n" +
+      "• Response Code is 200"
+    );
+  }
 
-      const destination = (await response.text()).trim();
+  if (!destination.startsWith("http")) {
+    throw new Error("Got unexpected response (not a URL):\n" + destination.slice(0, 200));
+  }
 
-      if (!destination) {
-        throw new Error(
-          "n8n returned an empty response.\n\n" +
-          "Check that your Respond to Webhook node:\n" +
-          "• Has 'Respond With' set to Text\n" +
-          "• Has Response Body set to {{ $json.redirectUrl }} with the = toggle ON\n" +
-          "• Response Code is 200"
-        );
-      }
+  setProgress(100);
+  showStatus("Success! Opening validation report…", "ok");
+  setTimeout(() => { window.location.href = destination; }, 600);
 
-      if (!destination.startsWith("http")) {
-        throw new Error("Got unexpected response (not a URL):\n" + destination.slice(0, 200));
-      }
-
-      setProgress(100);
-      showStatus("Success! Opening validation report…", "ok");
-
-      setTimeout(() => { window.location.href = destination; }, 600);
-
-    } catch (err) {
-      setProgress(null);
-      showStatus("Error: " + err.message, "error");
-      btn.disabled = false;
-    }
+} catch (err) {
+  setProgress(null);
+  showStatus("Error: " + err.message, "error");
+  btn.disabled = false;
+}
   }
 </script>
 </body>
